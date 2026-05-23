@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: workflow-postgres
+    environment:
+      POSTGRES_DB: workflowdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 2005
+    ports:
+      - "5432:5432"
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: workflow-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+  redis:
+    image: redis:7
+    container_name: workflow-redis
+    ports:
+      - "6379:6379"
