@@ -13,10 +13,10 @@ public class ChargePaymentStep implements StepExecutor {
     {
         System.out.println("Charging payment for: " + execution.getWorkflowName());
 
-        if (Math.random() < 0.3) {
-            System.out.println("Payment FAILED");
-            return StepResult.FAILURE;
-        }
+//        if (Math.random() < 0.3) {
+//            System.out.println("Payment FAILED");
+//            return StepResult.FAILURE;
+//        }
 
         System.out.println("Payment SUCCESS");
         return StepResult.SUCCESS;

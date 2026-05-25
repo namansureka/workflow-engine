@@ -12,12 +12,13 @@ import org.springframework.stereotype.Component;
 public class WorkflowWorker {
 
     private final WorkflowExecutionRepository executionRepository;
+    private final WorkflowEngine workflowEngine;
 
     @RabbitListener(queues = RabbitMQConfig.WORKFLOW_QUEUE)
     public void processJob(Long executionId) {
         WorkflowExecution execution = executionRepository.findById(executionId)
                 .orElseThrow(() -> new RuntimeException("Execution not found: " + executionId));
 
-        // TODO: pass to workflowEngine once built
+        workflowEngine.execute(execution);
     }
 }
