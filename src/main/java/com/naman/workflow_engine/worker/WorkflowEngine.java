@@ -1,12 +1,16 @@
 package com.naman.workflow_engine.worker;
 
+import com.naman.workflow_engine.config.RabbitMQConfig;
 import com.naman.workflow_engine.job.model.ExecutionStatus;
 import com.naman.workflow_engine.job.model.StepConfig;
 import com.naman.workflow_engine.job.model.WorkflowDefinition;
 import com.naman.workflow_engine.job.model.WorkflowExecution;
 import com.naman.workflow_engine.job.repository.WorkflowExecutionRepository;
 import com.naman.workflow_engine.job.service.WorkflowDefinitionService;
+import com.naman.workflow_engine.worker.retry.DeadLetterHandler;
+import com.naman.workflow_engine.worker.retry.RetryPolicy;
 import lombok.RequiredArgsConstructor;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -17,8 +21,11 @@ public class WorkflowEngine {
     private final WorkflowDefinitionService definitionService;
     private final WorkflowExecutionRepository executionRepository;
     private final StepExecutorRegistry registry;
+    private final RetryPolicy retryPolicy;
+    private final DeadLetterHandler deadLetterHandler;
+    private final RabbitTemplate rabbitTemplate;
 
-    public void execute(WorkflowExecution execution) {
+    public void execute(WorkflowExecution execution) throws InterruptedException {
 
         WorkflowDefinition definition=definitionService.getDefinition(execution.getWorkflowName());
         List<StepConfig> steps = definition.getSteps();
@@ -45,7 +52,20 @@ public class WorkflowEngine {
                 }
                 executionRepository.save(execution);
             } else {
-                // FAILURE — handle retry later
+                int retryCount=execution.getRetryCount();
+                long delay = retryPolicy.delay(retryCount);
+                if (retryCount >= stepConfig.getRetryLimit()){
+                    deadLetterHandler.handle(execution);
+                    return;
+                }
+                else {
+                    execution.setRetryCount(retryCount+1);
+                    execution.setStatus(ExecutionStatus.WAITING_RETRY);
+                    executionRepository.save(execution);
+                    Thread.sleep(delay);
+                    rabbitTemplate.convertAndSend(RabbitMQConfig.WORKFLOW_QUEUE, execution.getId());
+
+                }
                 return;
             }
         }

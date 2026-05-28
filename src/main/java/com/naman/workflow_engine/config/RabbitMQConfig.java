@@ -11,15 +11,23 @@ import org.springframework.context.annotation.Configuration;
 public class RabbitMQConfig {
 
     public static final String WORKFLOW_QUEUE = "workflow.queue";
+    public static final String DLQ="dead-letter.queue";
 
     @Bean
     public Queue workflowQueue() {
         return new Queue(WORKFLOW_QUEUE, true);
     }
+
+    @Bean
+    public Queue deadLetterQueue() {
+        return new Queue(DLQ, true);
+    }
+
     @Bean
     public MessageConverter messageConverter() {
         return new JacksonJsonMessageConverter();
     }
+
     @Bean
     public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory,
                                          MessageConverter messageConverter) {
