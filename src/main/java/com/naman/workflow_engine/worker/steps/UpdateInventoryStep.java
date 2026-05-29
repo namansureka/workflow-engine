@@ -13,10 +13,10 @@ public class UpdateInventoryStep implements StepExecutor {
     {
         System.out.println("Updating Inventory for: " + execution.getWorkflowName());
 
-//        if (Math.random() < 0.3) {
-//            System.out.println("Updating FAILED");
-//            return StepResult.FAILURE;
-//        }
+        if (Math.random() < 0.3) {
+            System.out.println("Updating FAILED");
+            return StepResult.FAILURE;
+        }
 
         System.out.println("Updating SUCCESS");
         return StepResult.SUCCESS;

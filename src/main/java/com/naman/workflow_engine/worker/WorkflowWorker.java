@@ -15,7 +15,7 @@ public class WorkflowWorker {
     private final WorkflowEngine workflowEngine;
 
     @RabbitListener(queues = RabbitMQConfig.WORKFLOW_QUEUE)
-    public void processJob(Long executionId) {
+    public void processJob(Long executionId) throws InterruptedException {
         WorkflowExecution execution = executionRepository.findById(executionId)
                 .orElseThrow(() -> new RuntimeException("Execution not found: " + executionId));
 

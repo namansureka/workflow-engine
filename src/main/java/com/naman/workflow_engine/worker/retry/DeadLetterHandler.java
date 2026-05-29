@@ -18,6 +18,7 @@ public class DeadLetterHandler {
     public void handle(WorkflowExecution execution){
 
         execution.setStatus(ExecutionStatus.FAILED);
+        execution.setFailureReason("Max retries exhausted");
         executionRepository.save(execution);
         rabbitTemplate.convertAndSend(RabbitMQConfig.DLQ,execution.getId());
     }

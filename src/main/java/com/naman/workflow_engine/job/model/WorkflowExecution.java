@@ -30,6 +30,8 @@ public class WorkflowExecution {
 
     private int retryCount = 0;
 
+    private String failureReason;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 
