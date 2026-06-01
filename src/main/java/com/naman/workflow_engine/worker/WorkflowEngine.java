@@ -29,7 +29,7 @@ public class WorkflowEngine {
     private final RabbitTemplate rabbitTemplate;
     private final IdempotencyService idempotencyService;
 
-    public void execute(WorkflowExecution execution) throws InterruptedException {
+    public void execute(WorkflowExecution execution) {
 
         WorkflowDefinition definition=definitionService.getDefinition(execution.getWorkflowName());
         List<StepConfig> steps = definition.getSteps();
@@ -63,8 +63,8 @@ public class WorkflowEngine {
                 if (i + 1 < steps.size()) {
                     execution.setCurrentStep(steps.get(i + 1).getStepName());
                 }
-                idempotencyService.markAsExecuted(execution.getId(), stepConfig.getStepName());
                 executionRepository.save(execution);
+                idempotencyService.markAsExecuted(execution.getId(), stepConfig.getStepName());
                 log.info("Step SUCCESS: {} for execution: {}", stepConfig.getStepName(), execution.getId());
 
             } else {
@@ -82,11 +82,13 @@ public class WorkflowEngine {
                     execution.setRetryCount(retryCount+1);
                     execution.setStatus(ExecutionStatus.WAITING_RETRY);
                     executionRepository.save(execution);
-                    Thread.sleep(delay);
-                    rabbitTemplate.convertAndSend(RabbitMQConfig.WORKFLOW_QUEUE, execution.getId());
-
+                    rabbitTemplate.convertAndSend(RabbitMQConfig.DELAY_QUEUE, execution.getId(),
+                            message -> {message.getMessageProperties()
+                                    .setExpiration(String.valueOf(delay));
+                        return message;
+                    });
+                    return;
                 }
-                return;
             }
         }
         log.info("Workflow COMPLETED for execution: {}", execution.getId());
