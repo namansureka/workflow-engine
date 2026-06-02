@@ -48,30 +48,74 @@ public class WorkflowEngine {
             StepConfig stepConfig = steps.get(i);
             StepExecutor executor = registry.getExecutor(stepConfig.getStepName());
 
+            // Handle missing executor
+            if (executor == null) {
+                log.error("Step executor not found: {} for execution: {}", stepConfig.getStepName(), execution.getId());
+                execution.setStatus(ExecutionStatus.FAILED);
+                execution.setFailureReason("Step executor not found: " + stepConfig.getStepName());
+                executionRepository.save(execution);
+                deadLetterHandler.handle(execution);
+                return;
+            }
+
             if(idempotencyService.isAlreadyExecuted(execution.getId(), stepConfig.getStepName())){
                 log.info("Step already executed, skipping: {} for execution: {}", stepConfig.getStepName(), execution.getId());
-
                 continue;
 
             }
 
             log.info("Executing step: {} for execution: {}", stepConfig.getStepName(), execution.getId());
 
-            StepResult result = executor.execute(execution);
+            StepResult result;
+            try {
+                result = executor.execute(execution);
+            } catch (Exception e) {
+                log.error("Unhandled exception in step: {} for execution: {}", stepConfig.getStepName(), execution.getId(), e);
+                int retryCount = execution.getRetryCount();
+                
+                if (retryCount >= stepConfig.getRetryLimit()) {
+                    log.error("Step permanently FAILED due to exception: {} for execution: {}, sending to DLQ", 
+                            stepConfig.getStepName(), execution.getId());
+                    execution.setStatus(ExecutionStatus.FAILED);
+                    execution.setFailureReason("Step failed with exception: " + e.getMessage());
+                    executionRepository.save(execution);
+                    deadLetterHandler.handle(execution);
+                    return;
+                } else {
+                    long delay = retryPolicy.delay(retryCount);
+                    log.warn("Step FAILED with exception: {} for execution: {}, retry count: {}, retrying after {}ms",
+                            stepConfig.getStepName(), execution.getId(), retryCount, delay);
+                    execution.setRetryCount(retryCount + 1);
+                    execution.setStatus(ExecutionStatus.WAITING_RETRY);
+                    execution.setFailureReason("Step failed with exception: " + e.getMessage());
+                    executionRepository.save(execution);
+                    rabbitTemplate.convertAndSend(RabbitMQConfig.DELAY_QUEUE, execution.getId(),
+                            message -> {
+                                message.getMessageProperties().setExpiration(String.valueOf(delay));
+                                return message;
+                            });
+                    return;
+                }
+            }
 
             if (result == StepResult.SUCCESS) {
                 if (i + 1 < steps.size()) {
                     execution.setCurrentStep(steps.get(i + 1).getStepName());
                 }
+                // Reset retry count for the next step
+                execution.setRetryCount(0);
+                execution.setFailureReason(null);
                 executionRepository.save(execution);
                 idempotencyService.markAsExecuted(execution.getId(), stepConfig.getStepName());
                 log.info("Step SUCCESS: {} for execution: {}", stepConfig.getStepName(), execution.getId());
 
             } else {
-                int retryCount=execution.getRetryCount();
+                int retryCount = execution.getRetryCount();
                 if (retryCount >= stepConfig.getRetryLimit()){
                     log.error("Step permanently FAILED: {} for execution: {}, sending to DLQ", stepConfig.getStepName(), execution.getId());
-
+                    execution.setStatus(ExecutionStatus.FAILED);
+                    execution.setFailureReason("Step failed after " + retryCount + " retries");
+                    executionRepository.save(execution);
                     deadLetterHandler.handle(execution);
                     return;
                 }
@@ -81,6 +125,7 @@ public class WorkflowEngine {
                             stepConfig.getStepName(), execution.getId(), retryCount, delay);
                     execution.setRetryCount(retryCount+1);
                     execution.setStatus(ExecutionStatus.WAITING_RETRY);
+                    execution.setFailureReason("Step execution failed, retry " + (retryCount + 1) + " of " + stepConfig.getRetryLimit());
                     executionRepository.save(execution);
                     rabbitTemplate.convertAndSend(RabbitMQConfig.DELAY_QUEUE, execution.getId(),
                             message -> {message.getMessageProperties()

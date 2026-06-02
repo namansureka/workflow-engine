@@ -1,5 +1,6 @@
 package com.naman.workflow_engine.worker;
 
+import com.naman.workflow_engine.circuit.CircuitBreakerRegistry;
 import com.naman.workflow_engine.config.RabbitMQConfig;
 import com.naman.workflow_engine.job.model.WorkflowExecution;
 import com.naman.workflow_engine.job.repository.WorkflowExecutionRepository;
@@ -13,6 +14,7 @@ public class WorkflowWorker {
 
     private final WorkflowExecutionRepository executionRepository;
     private final WorkflowEngine workflowEngine;
+    private final CircuitBreakerRegistry circuitBreakerRegistry;
 
     @RabbitListener(queues = RabbitMQConfig.WORKFLOW_QUEUE)
     public void processJob(Long executionId) throws InterruptedException {
