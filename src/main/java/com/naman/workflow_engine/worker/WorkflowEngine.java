@@ -1,5 +1,7 @@
 package com.naman.workflow_engine.worker;
 
+import com.naman.workflow_engine.circuit.CircuitBreaker;
+import com.naman.workflow_engine.circuit.CircuitBreakerRegistry;
 import com.naman.workflow_engine.config.RabbitMQConfig;
 import com.naman.workflow_engine.job.model.ExecutionStatus;
 import com.naman.workflow_engine.job.model.StepConfig;
@@ -28,6 +30,7 @@ public class WorkflowEngine {
     private final DeadLetterHandler deadLetterHandler;
     private final RabbitTemplate rabbitTemplate;
     private final IdempotencyService idempotencyService;
+    private final CircuitBreakerRegistry circuitBreakerRegistry;
 
     public void execute(WorkflowExecution execution) {
 
@@ -68,8 +71,8 @@ public class WorkflowEngine {
 
             StepResult result;
             try {
-                result = executor.execute(execution);
-            } catch (Exception e) {
+                CircuitBreaker breaker = circuitBreakerRegistry.getBreaker(stepConfig.getStepName());
+                result = breaker.execute(() -> executor.execute(execution), stepConfig.getStepName());            } catch (Exception e) {
                 log.error("Unhandled exception in step: {} for execution: {}", stepConfig.getStepName(), execution.getId(), e);
                 int retryCount = execution.getRetryCount();
                 
@@ -105,8 +108,8 @@ public class WorkflowEngine {
                 // Reset retry count for the next step
                 execution.setRetryCount(0);
                 execution.setFailureReason(null);
-                executionRepository.save(execution);
                 idempotencyService.markAsExecuted(execution.getId(), stepConfig.getStepName());
+                executionRepository.save(execution);
                 log.info("Step SUCCESS: {} for execution: {}", stepConfig.getStepName(), execution.getId());
 
             } else {

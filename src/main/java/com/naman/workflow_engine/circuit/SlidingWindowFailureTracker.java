@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -55,5 +56,19 @@ public class SlidingWindowFailureTracker {
         long cutoff = currentTime - WINDOW_MS;
         redisTemplate.opsForZSet().removeRangeByScore(requestKey(serviceId), 0, cutoff);
         redisTemplate.opsForZSet().removeRangeByScore(failureKey(serviceId), 0, cutoff);
+    }
+
+    public void incrementFailurePressure(String serviceId) {
+        redisTemplate.opsForValue().increment("pressure:" + serviceId);
+    }
+
+    public int getFailurePressure(String serviceId) {
+
+        String pressure = redisTemplate.opsForValue().get("pressure:" + serviceId);
+        return pressure == null ? 0 : Integer.parseInt(pressure);
+    }
+
+    public void resetFailurePressure(String serviceId) {
+        redisTemplate.delete("pressure:" + serviceId);
     }
 }
