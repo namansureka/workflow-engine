@@ -1,5 +1,6 @@
 package com.naman.workflow_engine.circuit;
 
+import com.naman.workflow_engine.common.dtos.CircuitBreakerResponse;
 import com.naman.workflow_engine.worker.StepResult;
 import lombok.Getter;
 
@@ -14,9 +15,13 @@ public class CircuitBreaker {
     private final long cooldownMs;
     private String serviceId;
     private final SlidingWindowFailureTracker slidingWindowFailureTracker;
+    private final FallbackStrategy fallbackStrategy;
+    private boolean halfOpenTestSent = false;
 
 
-    public CircuitBreaker(long cooldownMs,SlidingWindowFailureTracker tracker,String serviceId) {
+    public CircuitBreaker(long cooldownMs, SlidingWindowFailureTracker tracker,
+                          String serviceId, FallbackStrategy fallbackStrategy) {
+        this.fallbackStrategy = fallbackStrategy;
         this.state = CircuitBreakerState.CLOSED;
         this.cooldownMs = cooldownMs;
         this.slidingWindowFailureTracker= tracker  ;
@@ -26,11 +31,14 @@ public class CircuitBreaker {
     public void open() {
         state = CircuitBreakerState.OPEN;
         openedTime = Instant.now();
+        halfOpenTestSent = false;
+
     }
 
     public void close() {
         state = CircuitBreakerState.CLOSED;
         slidingWindowFailureTracker.resetFailurePressure(serviceId);
+        halfOpenTestSent = false;
     }
 
     public void moveToHalfOpen() {
@@ -41,6 +49,14 @@ public class CircuitBreaker {
         if (state == CircuitBreakerState.OPEN) {
             if (Instant.now().isAfter(openedTime.plusMillis(cooldownMs))) {
                 moveToHalfOpen();
+            }
+            else{
+                return false;
+            }
+        }
+        if(state == CircuitBreakerState.HALF_OPEN) {
+            if(!halfOpenTestSent) {
+                halfOpenTestSent = true;
                 return true;
             }
             return false;
@@ -51,7 +67,7 @@ public class CircuitBreaker {
     public StepResult execute(Supplier<StepResult> action, String serviceId){
 
         if(!allowRequest()){
-            return StepResult.FAILURE;
+            return fallbackStrategy.getFallback(serviceId);
         }
         StepResult result = action.get();
         if(result==StepResult.SUCCESS){
@@ -76,5 +92,18 @@ public class CircuitBreaker {
 
             return StepResult.FAILURE;
         }
+    }
+
+    public CircuitBreakerResponse toResponse(){
+        CircuitBreakerResponse breaker= new CircuitBreakerResponse();
+        breaker.setServiceId(serviceId);
+        breaker.setState(state);
+        if(state == CircuitBreakerState.OPEN) {
+            breaker.setOpenedTime(openedTime);
+            breaker.setFailurePressure(slidingWindowFailureTracker.getFailurePressure(serviceId));
+        }
+
+        return breaker;
+
     }
 }

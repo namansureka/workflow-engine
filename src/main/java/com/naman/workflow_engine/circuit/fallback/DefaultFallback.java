@@ -3,8 +3,10 @@ package com.naman.workflow_engine.circuit.fallback;
 import com.naman.workflow_engine.circuit.FallbackStrategy;
 import com.naman.workflow_engine.worker.StepResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 @Slf4j
+@Component
 public class DefaultFallback implements FallbackStrategy {
 
     @Override

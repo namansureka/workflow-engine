@@ -5,8 +5,10 @@ import com.naman.workflow_engine.worker.StepResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.stereotype.Component;
 
 @Slf4j
+@Component
 @RequiredArgsConstructor
 public class CachedFallback implements FallbackStrategy {
     private final RedisTemplate<String, String> redisTemplate;
