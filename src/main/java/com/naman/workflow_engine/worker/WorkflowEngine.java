@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -156,7 +157,7 @@ public class WorkflowEngine {
                 .workflowName(execution.getWorkflowName())
                 .currentStep(execution.getCurrentStep())
                 .status(execution.getStatus())
-                .timestamp(LocalDateTime.now())
+                .timestamp(Instant.now())
                 .build());
     }
 }

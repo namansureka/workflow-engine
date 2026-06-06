@@ -4,6 +4,7 @@ import com.naman.workflow_engine.job.model.ExecutionStatus;
 import lombok.Builder;
 import lombok.Data;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 @Data
@@ -17,5 +18,5 @@ public class ExecutionStatusEvent {
 
     private ExecutionStatus status;
 
-    private LocalDateTime timestamp;
+    private Instant timestamp;
 }
