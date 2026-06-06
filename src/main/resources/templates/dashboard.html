@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>workflow-engine · live</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap');
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:          #0d0e11;
+            --bg2:         #111318;
+            --bg3:         #161820;
+            --border:      #1f2230;
+            --border2:     #252840;
+            --text:        #c0c5d8;
+            --text-dim:    #4c5270;
+            --text-faint:  #2e3350;
+            --accent:      #5b7fff;
+
+            --green:       #3ddc84;
+            --green-dim:   rgba(61,220,132,.12);
+            --green-border:rgba(61,220,132,.22);
+
+            --red:         #ff5f6b;
+            --red-dim:     rgba(255,95,107,.10);
+            --red-border:  rgba(255,95,107,.22);
+
+            --amber:       #ffb547;
+            --amber-dim:   rgba(255,181,71,.10);
+            --amber-border:rgba(255,181,71,.22);
+
+            --blue:        #5b9fff;
+            --blue-dim:    rgba(91,159,255,.10);
+            --blue-border: rgba(91,159,255,.30);
+
+            --grey:        #4a5070;
+            --grey-dim:    rgba(74,80,112,.10);
+            --grey-border: rgba(74,80,112,.22);
+
+            --font: 'IBM Plex Mono', 'Fira Code', 'Cascadia Code', monospace;
+        }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            font-size: 12.5px;
+            line-height: 1.5;
+            overflow: hidden;
+        }
+
+        /* grain */
+        body::after {
+            content: '';
+            position: fixed; inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.035'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        /* ─── RECONNECT BANNER ─── */
+        #banner {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 100;
+            background: linear-gradient(90deg, #1a0f00, #2a1500, #1a0f00);
+            border-bottom: 1px solid var(--amber-border);
+            padding: 7px 20px;
+            font-size: 11px;
+            color: var(--amber);
+            letter-spacing: .5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transform: translateY(-100%);
+            transition: transform .3s ease;
+        }
+        #banner.show { transform: translateY(0); }
+        #banner .spin {
+            width: 10px; height: 10px;
+            border: 1.5px solid var(--amber);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ─── LAYOUT ─── */
+        .shell {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* ─── HEADER ─── */
+        header {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            height: 46px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg2);
+            position: relative;
+            z-index: 10;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            letter-spacing: -.2px;
+        }
+        .brand .slash { color: var(--text-dim); margin: 0 4px; }
+        .brand .proj  { color: var(--accent); }
+        .brand .live-chip {
+            margin-left: 10px;
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--green);
+            background: var(--green-dim);
+            border: 1px solid var(--green-border);
+            padding: 2px 7px;
+            border-radius: 3px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .conn-status {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+        .conn-status .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--grey);
+            transition: background .4s;
+            flex-shrink: 0;
+        }
+        .conn-status.ok .dot    { background: var(--green); box-shadow: 0 0 6px rgba(61,220,132,.5); animation: pulse-g 2.5s infinite; }
+        .conn-status.err .dot   { background: var(--red); }
+        .conn-status.ok  #conn-label { color: var(--green); }
+        .conn-status.err #conn-label { color: var(--red); }
+
+        @keyframes pulse-g {
+            0%,100% { box-shadow: 0 0 0 0 rgba(61,220,132,.5); }
+            50%      { box-shadow: 0 0 0 5px rgba(61,220,132,0); }
+        }
+
+        .event-counter {
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+        .event-counter span { color: var(--text); font-weight: 500; }
+
+        /* ─── TABLE AREA ─── */
+        .table-outer {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border2) transparent;
+        }
+        .table-outer::-webkit-scrollbar { width: 5px; }
+        .table-outer::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        colgroup col:nth-child(1) { width: 160px; }
+        colgroup col:nth-child(2) { width: 22%; }
+        colgroup col:nth-child(3) { width: 28%; }
+        colgroup col:nth-child(4) { width: 130px; }
+        colgroup col:nth-child(5) { width: 100px; }
+
+        thead {
+            position: sticky; top: 0;
+            background: var(--bg2);
+            z-index: 5;
+        }
+        thead::after {
+            content: '';
+            position: absolute; bottom: 0; left: 0; right: 0;
+            height: 1px;
+            background: var(--border);
+        }
+
+        th {
+            padding: 9px 14px;
+            text-align: left;
+            font-size: 9.5px;
+            font-weight: 500;
+            letter-spacing: 1.8px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+        }
+
+        /* ─── ROWS ─── */
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            cursor: default;
+            animation: slide-in .22s ease forwards;
+            position: relative;
+            transition: background .15s;
+        }
+
+        @keyframes slide-in {
+            from { opacity: 0; transform: translateY(-8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        tbody tr:hover { background: rgba(255,255,255,.018); }
+
+        /* status row tints + left bar */
+        tr.s-COMPLETED { border-left: 2px solid var(--green); background: var(--green-dim); }
+        tr.s-FAILED    { border-left: 2px solid var(--red);   background: var(--red-dim);   }
+        tr.s-WAITING_RETRY { border-left: 2px solid var(--amber); background: var(--amber-dim); }
+        tr.s-RUNNING   { border-left: 2px solid var(--blue);  background: var(--blue-dim); animation: slide-in .22s ease forwards, running-pulse 2.5s ease-in-out infinite; }
+        tr.s-PENDING   { border-left: 2px solid var(--grey);  background: var(--grey-dim);  }
+
+        @keyframes running-pulse {
+            0%,100% { border-left-color: var(--blue); }
+            50%      { border-left-color: rgba(91,159,255,.2); }
+        }
+
+        td {
+            padding: 10px 14px;
+            vertical-align: middle;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .cell-id {
+            font-weight: 600;
+            color: var(--accent);
+            font-size: 11.5px;
+            letter-spacing: -.3px;
+        }
+
+        .cell-wf { color: var(--text); }
+
+        .cell-step {
+            color: var(--text-dim);
+            font-style: italic;
+            font-size: 12px;
+        }
+
+        .cell-ts {
+            color: var(--text-dim);
+            font-size: 11px;
+            text-align: right;
+        }
+
+        /* ─── BADGE ─── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 2px 9px;
+            border-radius: 3px;
+            font-size: 9.5px;
+            font-weight: 600;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .badge .b-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+        .b-COMPLETED    { color: var(--green); background: var(--green-dim); border: 1px solid var(--green-border); }
+        .b-FAILED       { color: var(--red);   background: var(--red-dim);   border: 1px solid var(--red-border);   }
+        .b-WAITING_RETRY{ color: var(--amber); background: var(--amber-dim); border: 1px solid var(--amber-border); }
+        .b-RUNNING      { color: var(--blue);  background: var(--blue-dim);  border: 1px solid var(--blue-border);  }
+        .b-PENDING      { color: var(--grey);  background: var(--grey-dim);  border: 1px solid var(--grey-border);  }
+
+        /* ─── TOOLTIP ─── */
+        .tooltip {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 12px;
+            z-index: 50;
+            background: var(--bg3);
+            border: 1px solid var(--border2);
+            border-radius: 5px;
+            padding: 10px 14px;
+            font-size: 11px;
+            color: var(--text);
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity .15s, transform .15s;
+            min-width: 240px;
+            box-shadow: 0 8px 32px rgba(0,0,0,.5);
+        }
+        .tooltip.visible { opacity: 1; transform: translateY(0); }
+        .tooltip .tl-row { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 4px; }
+        .tooltip .tl-row:last-child { margin-bottom: 0; }
+        .tooltip .tl-key { color: var(--text-dim); }
+        .tooltip .tl-val { color: var(--text); font-weight: 500; }
+
+        /* ─── EMPTY ─── */
+        #empty-row td {
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-faint);
+            border: none;
+        }
+        .empty-msg { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+        .empty-msg svg { opacity: .2; }
+        .empty-msg p { font-size: 11px; letter-spacing: .5px; }
+
+        /* ─── FOOTER ─── */
+        footer {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 20px;
+            border-top: 1px solid var(--border);
+            background: var(--bg2);
+        }
+
+        .legend {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .leg {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: .3px;
+        }
+        .leg-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+        .footer-right {
+            font-size: 10px;
+            color: var(--text-faint);
+            letter-spacing: .3px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- reconnect banner -->
+<div id="banner">
+    <div class="spin"></div>
+    <span>Connection lost — reconnecting…</span>
+</div>
+
+<div class="shell">
+
+    <!-- HEADER -->
+    <header>
+        <div class="brand">
+            <span>workflow-engine</span>
+            <span class="slash">/</span>
+            <span class="proj">executions</span>
+            <span class="live-chip">live</span>
+        </div>
+        <div class="header-right">
+            <div class="event-counter">events <span id="count">0</span></div>
+            <div class="conn-status" id="conn-status">
+                <div class="dot"></div>
+                <span id="conn-label">connecting</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- TABLE -->
+    <div class="table-outer">
+        <table>
+            <colgroup>
+                <col/><col/><col/><col/><col/>
+            </colgroup>
+            <thead>
+            <tr>
+                <th>Execution ID</th>
+                <th>Workflow</th>
+                <th>Current Step</th>
+                <th>Status</th>
+                <th style="text-align:right">When</th>
+            </tr>
+            </thead>
+            <tbody id="exec-body">
+            <tr id="empty-row">
+                <td colspan="5">
+                    <div class="empty-msg">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                        <p>waiting for execution events…</p>
+                    </div>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- FOOTER -->
+    <footer>
+        <div class="legend">
+            <div class="leg"><div class="leg-dot" style="background:var(--green)"></div>completed</div>
+            <div class="leg"><div class="leg-dot" style="background:var(--red)"></div>failed</div>
+            <div class="leg"><div class="leg-dot" style="background:var(--amber)"></div>waiting_retry</div>
+            <div class="leg"><div class="leg-dot" style="background:var(--blue)"></div>running</div>
+            <div class="leg"><div class="leg-dot" style="background:var(--grey)"></div>pending</div>
+        </div>
+        <div class="footer-right">ws:/ws/dashboard → /topic/executions</div>
+    </footer>
+
+</div>
+
+<script>
+    /* ── utils ── */
+    function esc(s) {
+        return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function relativeTime(raw) {
+        try {
+            const d   = (typeof raw === 'number') ? new Date(raw) : new Date(raw);
+            const sec = Math.round((Date.now() - d) / 1000);
+            if (isNaN(sec))          return raw;
+            if (sec < 5)             return 'just now';
+            if (sec < 60)            return `${sec}s ago`;
+            if (sec < 3600)          return `${Math.floor(sec/60)}m ago`;
+            if (sec < 86400)         return `${Math.floor(sec/3600)}h ago`;
+            return `${Math.floor(sec/86400)}d ago`;
+        } catch { return raw; }
+    }
+
+    function absTime(raw) {
+        try {
+            const d = new Date(raw);
+            return isNaN(d) ? raw : d.toLocaleString('en-IN', {
+                day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+            });
+        } catch { return raw; }
+    }
+
+    /* ── state ── */
+    let rowCount  = 0;
+    let rowData   = new WeakMap(); // tr → raw data
+    let relTimers = [];            // list of {td, rawTs} to tick
+
+    const banner    = document.getElementById('banner');
+    const connEl    = document.getElementById('conn-status');
+    const connLabel = document.getElementById('conn-label');
+    const countEl   = document.getElementById('count');
+    const body      = document.getElementById('exec-body');
+    let   emptyRow  = document.getElementById('empty-row');
+
+    /* ── relative time ticker ── */
+    function startTicker() {
+        setInterval(() => {
+            relTimers.forEach(({ td, rawTs }) => {
+                td.textContent = relativeTime(rawTs);
+            });
+        }, 10_000);
+    }
+
+    /* ── tooltip ── */
+    let activeTooltip = null;
+
+    function showTooltip(tr, data) {
+        hideTooltip();
+        const tip = document.createElement('div');
+        tip.className = 'tooltip';
+        tip.innerHTML = `
+    <div class="tl-row"><span class="tl-key">executionId</span><span class="tl-val">${esc(data.executionId)}</span></div>
+    <div class="tl-row"><span class="tl-key">workflowName</span><span class="tl-val">${esc(data.workflowName)}</span></div>
+    <div class="tl-row"><span class="tl-key">currentStep</span><span class="tl-val">${esc(data.currentStep)}</span></div>
+    <div class="tl-row"><span class="tl-key">status</span><span class="tl-val">${esc(data.status)}</span></div>
+    <div class="tl-row"><span class="tl-key">timestamp</span><span class="tl-val">${absTime(data.timestamp)}</span></div>
+  `;
+        tr.style.position = 'relative';
+        tr.appendChild(tip);
+        requestAnimationFrame(() => tip.classList.add('visible'));
+        activeTooltip = tip;
+    }
+
+    function hideTooltip() {
+        if (activeTooltip) { activeTooltip.remove(); activeTooltip = null; }
+    }
+
+    /* ── add row ── */
+    function addRow(data) {
+        if (emptyRow) { emptyRow.remove(); emptyRow = null; }
+
+        const status  = (data.status || 'PENDING').trim().toUpperCase();
+        const label   = status.replace(/_/g, ' ');
+        const rawTs   = data.timestamp;
+
+        const tr = document.createElement('tr');
+        tr.className = `s-${status}`;
+
+        const tsTd = document.createElement('td');
+        tsTd.className = 'cell-ts';
+        tsTd.textContent = relativeTime(rawTs);
+        relTimers.push({ td: tsTd, rawTs });
+
+        tr.innerHTML = `
+    <td class="cell-id">${esc(data.executionId)}</td>
+    <td class="cell-wf">${esc(data.workflowName)}</td>
+    <td class="cell-step">${esc(data.currentStep)}</td>
+    <td><span class="badge b-${status}"><span class="b-dot"></span>${esc(label)}</span></td>
+  `;
+        tr.appendChild(tsTd);
+
+        rowData.set(tr, data);
+
+        tr.addEventListener('mouseenter', () => showTooltip(tr, rowData.get(tr)));
+        tr.addEventListener('mouseleave', hideTooltip);
+
+        body.insertBefore(tr, body.firstChild);
+        rowCount++;
+        countEl.textContent = rowCount;
+    }
+
+    /* ── connect ── */
+    function setStatus(state) {
+        // state: 'connecting' | 'connected' | 'disconnected'
+        connEl.className = 'conn-status' + (state === 'connected' ? ' ok' : state === 'disconnected' ? ' err' : '');
+        connLabel.textContent = state;
+        banner.classList.toggle('show', state === 'disconnected');
+    }
+
+    function connect() {
+        setStatus('connecting');
+        const socket = new SockJS('/ws/dashboard');
+        const client = Stomp.over(socket);
+        client.debug  = null;
+
+        client.connect({}, () => {
+            setStatus('connected');
+
+            client.subscribe('/topic/executions', msg => {
+                try { addRow(JSON.parse(msg.body)); }
+                catch(e) { console.warn('[ws] bad payload', msg.body); }
+            });
+
+        }, () => {
+            setStatus('disconnected');
+            setTimeout(connect, 5000);
+        });
+
+        socket.onclose = () => {
+            setStatus('disconnected');
+        };
+    }
+
+    startTicker();
+    connect();
+</script>
+</body>
+</html>

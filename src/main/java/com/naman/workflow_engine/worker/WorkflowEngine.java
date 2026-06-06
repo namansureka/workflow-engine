@@ -3,6 +3,8 @@ package com.naman.workflow_engine.worker;
 import com.naman.workflow_engine.circuit.CircuitBreaker;
 import com.naman.workflow_engine.circuit.CircuitBreakerRegistry;
 import com.naman.workflow_engine.config.RabbitMQConfig;
+import com.naman.workflow_engine.dashboard.ExecutionStatusEvent;
+import com.naman.workflow_engine.dashboard.WebSocketEventPublisher;
 import com.naman.workflow_engine.job.model.ExecutionStatus;
 import com.naman.workflow_engine.job.model.StepConfig;
 import com.naman.workflow_engine.job.model.WorkflowDefinition;
@@ -17,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -31,13 +34,14 @@ public class WorkflowEngine {
     private final RabbitTemplate rabbitTemplate;
     private final IdempotencyService idempotencyService;
     private final CircuitBreakerRegistry circuitBreakerRegistry;
+    private final WebSocketEventPublisher publisher;
 
     public void execute(WorkflowExecution execution) {
 
         WorkflowDefinition definition=definitionService.getDefinition(execution.getWorkflowName());
         List<StepConfig> steps = definition.getSteps();
         execution.setStatus(ExecutionStatus.RUNNING);
-        executionRepository.save(execution);
+        saveAndPublish(execution);
 
         int startIndex = 0;
         for (int i = 0; i < steps.size(); i++) {
@@ -56,7 +60,7 @@ public class WorkflowEngine {
                 log.error("Step executor not found: {} for execution: {}", stepConfig.getStepName(), execution.getId());
                 execution.setStatus(ExecutionStatus.FAILED);
                 execution.setFailureReason("Step executor not found: " + stepConfig.getStepName());
-                executionRepository.save(execution);
+                saveAndPublish(execution);
                 deadLetterHandler.handle(execution);
                 return;
             }
@@ -81,7 +85,7 @@ public class WorkflowEngine {
                             stepConfig.getStepName(), execution.getId());
                     execution.setStatus(ExecutionStatus.FAILED);
                     execution.setFailureReason("Step failed with exception: " + e.getMessage());
-                    executionRepository.save(execution);
+                    saveAndPublish(execution);
                     deadLetterHandler.handle(execution);
                     return;
                 } else {
@@ -91,7 +95,7 @@ public class WorkflowEngine {
                     execution.setRetryCount(retryCount + 1);
                     execution.setStatus(ExecutionStatus.WAITING_RETRY);
                     execution.setFailureReason("Step failed with exception: " + e.getMessage());
-                    executionRepository.save(execution);
+                    saveAndPublish(execution);
                     rabbitTemplate.convertAndSend(RabbitMQConfig.DELAY_QUEUE, execution.getId(),
                             message -> {
                                 message.getMessageProperties().setExpiration(String.valueOf(delay));
@@ -109,7 +113,7 @@ public class WorkflowEngine {
                 execution.setRetryCount(0);
                 execution.setFailureReason(null);
                 idempotencyService.markAsExecuted(execution.getId(), stepConfig.getStepName());
-                executionRepository.save(execution);
+                saveAndPublish(execution);
                 log.info("Step SUCCESS: {} for execution: {}", stepConfig.getStepName(), execution.getId());
 
             } else {
@@ -118,7 +122,7 @@ public class WorkflowEngine {
                     log.error("Step permanently FAILED: {} for execution: {}, sending to DLQ", stepConfig.getStepName(), execution.getId());
                     execution.setStatus(ExecutionStatus.FAILED);
                     execution.setFailureReason("Step failed after " + retryCount + " retries");
-                    executionRepository.save(execution);
+                    saveAndPublish(execution);
                     deadLetterHandler.handle(execution);
                     return;
                 }
@@ -129,7 +133,7 @@ public class WorkflowEngine {
                     execution.setRetryCount(retryCount+1);
                     execution.setStatus(ExecutionStatus.WAITING_RETRY);
                     execution.setFailureReason("Step execution failed, retry " + (retryCount + 1) + " of " + stepConfig.getRetryLimit());
-                    executionRepository.save(execution);
+                    saveAndPublish(execution);
                     rabbitTemplate.convertAndSend(RabbitMQConfig.DELAY_QUEUE, execution.getId(),
                             message -> {message.getMessageProperties()
                                     .setExpiration(String.valueOf(delay));
@@ -142,6 +146,17 @@ public class WorkflowEngine {
         log.info("Workflow COMPLETED for execution: {}", execution.getId());
 
         execution.setStatus(ExecutionStatus.COMPLETED);
+        saveAndPublish(execution);
+    }
+
+    private void saveAndPublish(WorkflowExecution execution) {
         executionRepository.save(execution);
+        publisher.publish(ExecutionStatusEvent.builder()
+                .executionId(execution.getId())
+                .workflowName(execution.getWorkflowName())
+                .currentStep(execution.getCurrentStep())
+                .status(execution.getStatus())
+                .timestamp(LocalDateTime.now())
+                .build());
     }
 }

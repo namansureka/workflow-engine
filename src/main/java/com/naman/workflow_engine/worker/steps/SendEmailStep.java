@@ -13,16 +13,16 @@ public class SendEmailStep implements StepExecutor {
     {
         System.out.println("Sending email for: " + execution.getWorkflowName());
 
-        if (Math.random() < 0.3) {
-            System.out.println("Sending FAILED");
-            return StepResult.FAILURE;
-        }
+//        if (Math.random() < 0.3) {
+//            System.out.println("Sending FAILED");
+//            return StepResult.FAILURE;
+//        }
 
         System.out.println("Sending SUCCESS");
         return StepResult.SUCCESS;
     }
 
     @Override
-    public String getStepName() { return "send-email"; }
+    public String getStepName() { return "sendEmail"; }
 
 }

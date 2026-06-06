@@ -13,15 +13,12 @@ public class WorkflowDefinitionService {
     private final WorkflowDefinitionRepository definitionRepository;
 
     public WorkflowDefinition saveDefinition(WorkflowDefinitionRequest request) {
-        // 1. create a new WorkflowDefinition entity
-        // 2. set name and steps from request
-        // 3. save to DB and return
-        WorkflowDefinition entity = new WorkflowDefinition();
+        WorkflowDefinition entity = definitionRepository.findByName(request.getName())
+                .orElse(new WorkflowDefinition());
         entity.setName(request.getName());
         entity.setSteps(request.getSteps());
         return definitionRepository.save(entity);
     }
-
     public WorkflowDefinition getDefinition(String name) {
         // 1. call repository findByName
         // 2. if not found → throw exception

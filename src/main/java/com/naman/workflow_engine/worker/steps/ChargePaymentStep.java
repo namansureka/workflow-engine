@@ -13,7 +13,7 @@ public class ChargePaymentStep implements StepExecutor {
     {
         System.out.println("Charging payment for: " + execution.getWorkflowName());
 
-        if (Math.random() < 0.3) {
+        if (Math.random() < 0.7) {
             System.out.println("Payment FAILED");
             return StepResult.FAILURE;
         }
@@ -23,6 +23,6 @@ public class ChargePaymentStep implements StepExecutor {
     }
 
     @Override
-    public String getStepName() { return "charge-payment"; }
+    public String getStepName() { return "chargePayment"; }
 
 }
