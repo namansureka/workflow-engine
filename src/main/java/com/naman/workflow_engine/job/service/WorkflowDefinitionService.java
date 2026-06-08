@@ -1,6 +1,7 @@
 package com.naman.workflow_engine.job.service;
 
 import com.naman.workflow_engine.common.dtos.WorkflowDefinitionRequest;
+import com.naman.workflow_engine.common.exception.WorkflowNotFoundException;
 import com.naman.workflow_engine.job.model.WorkflowDefinition;
 import com.naman.workflow_engine.job.repository.WorkflowDefinitionRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +21,7 @@ public class WorkflowDefinitionService {
         return definitionRepository.save(entity);
     }
     public WorkflowDefinition getDefinition(String name) {
-        // 1. call repository findByName
-        // 2. if not found → throw exception
-        // 3. return the definition
         return definitionRepository.findByName(name)
-                .orElseThrow(() -> new RuntimeException("Workflow definition not found: " + name));
+                .orElseThrow(() -> new WorkflowNotFoundException("Workflow definition not found: " + name));
     }
 }

@@ -1,6 +1,7 @@
 package com.naman.workflow_engine.worker;
 
 import com.naman.workflow_engine.circuit.CircuitBreakerRegistry;
+import com.naman.workflow_engine.common.exception.WorkflowNotFoundException;
 import com.naman.workflow_engine.config.RabbitMQConfig;
 import com.naman.workflow_engine.job.model.WorkflowExecution;
 import com.naman.workflow_engine.job.repository.WorkflowExecutionRepository;
@@ -19,7 +20,7 @@ public class WorkflowWorker {
     @RabbitListener(queues = RabbitMQConfig.WORKFLOW_QUEUE)
     public void processJob(Long executionId) throws InterruptedException {
         WorkflowExecution execution = executionRepository.findById(executionId)
-                .orElseThrow(() -> new RuntimeException("Execution not found: " + executionId));
+                .orElseThrow(() -> new WorkflowNotFoundException("Execution not found: " + executionId));
 
         workflowEngine.execute(execution);
     }

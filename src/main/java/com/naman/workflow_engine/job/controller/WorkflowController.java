@@ -4,15 +4,17 @@ import com.naman.workflow_engine.common.dtos.TriggerWorkflowRequest;
 import com.naman.workflow_engine.common.dtos.WorkflowDefinitionRequest;
 import com.naman.workflow_engine.job.model.WorkflowDefinition;
 import com.naman.workflow_engine.job.model.WorkflowExecution;
+import com.naman.workflow_engine.job.repository.WorkflowExecutionRepository;
 import com.naman.workflow_engine.job.service.WorkflowDefinitionService;
 import com.naman.workflow_engine.job.service.WorkflowTriggerService;
+import com.naman.workflow_engine.observability.StepExecutionLog;
+import com.naman.workflow_engine.observability.StepExecutionLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/workflows")
@@ -21,14 +23,31 @@ public class WorkflowController {
 
     private final WorkflowTriggerService triggerService;
     private final WorkflowDefinitionService definitionService;
+    private final WorkflowExecutionRepository executionRepository;
+    private final StepExecutionLogRepository stepExecutionLogRepository;
 
     @PostMapping("/define")
     public ResponseEntity<WorkflowDefinition> define(@RequestBody WorkflowDefinitionRequest request) {
         WorkflowDefinition saved = definitionService.saveDefinition(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);    }
+        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    }
 
     @PostMapping("/trigger")
     public ResponseEntity<WorkflowExecution> trigger(@RequestBody TriggerWorkflowRequest request) {
         WorkflowExecution execution=triggerService.triggerWorkflow(request.getWorkflowName());
-        return ResponseEntity.ok(execution);    }
+        return ResponseEntity.ok(execution);
+    }
+
+    @GetMapping("/{id}/status")
+    public ResponseEntity<WorkflowExecution> getStatus(@PathVariable Long id) {
+        return executionRepository.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/history")
+    public ResponseEntity<List<StepExecutionLog>> getHistory(@PathVariable Long id) {
+        List<StepExecutionLog> logs = stepExecutionLogRepository.findByExecutionId(id);
+        return ResponseEntity.ok(logs);
+    }
 }
