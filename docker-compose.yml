@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: workflowdb
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 2005
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
   rabbitmq:
